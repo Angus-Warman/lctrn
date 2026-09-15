@@ -17,28 +17,45 @@ import (
 type App struct {
 	ctx    context.Context
 	cancel context.CancelCauseFunc
-	mux    *http.ServeMux
+	Mux    *http.ServeMux
 }
 
-func (a *App) Close() {
-	a.cancel(fmt.Errorf("app closed"))
-}
-
-func FromMux(mux *http.ServeMux) *App {
+func New() *App {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
 	return &App{
 		ctx:    ctx,
 		cancel: cancel,
-		mux:    mux,
+		Mux:    http.NewServeMux(),
 	}
 }
 
-func FromEmbeddedFolder(embeddedFolder embed.FS) *App {
+func (a *App) ServeEmbeddedFolderAtRoot(embeddedFolder embed.FS) *App {
 	folder := getTopLevel(embeddedFolder)
-	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.FS(folder)))
-	return FromMux(mux)
+	a.Mux.Handle("/", http.FileServer(http.FS(folder)))
+	return a
+}
+
+func (a *App) ServeBytesAtRoot(root []byte) *App {
+	a.Mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write(root)
+	})
+	return a
+}
+
+func (a *App) Handle(pattern string, handler http.Handler) *App {
+	a.Mux.Handle(pattern, handler)
+	return a
+}
+
+func (a *App) HandleFunc(pattern string, handler func(w http.ResponseWriter, r *http.Request)) *App {
+	a.Mux.HandleFunc(pattern, handler)
+	return a
+}
+
+func (a *App) UseMux(mux *http.ServeMux) *App {
+	a.Mux = mux
+	return a
 }
 
 // If root contains exactly one top-level dir and nothing else, substitute it..
@@ -94,7 +111,7 @@ func (a *App) startServer(port string) error {
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%v", port),
-		Handler: a.mux,
+		Handler: a.Mux,
 	}
 
 	go func() {
@@ -127,6 +144,7 @@ func (a *App) startChrome(port string) error {
 		chromedp.Navigate(fmt.Sprintf("http://localhost:%v", port)),
 		chromedp.WaitReady("body"),
 	)
+
 	if err != nil {
 		cancelBrowser()
 		cancelAlloc()
@@ -143,4 +161,8 @@ func (a *App) startChrome(port string) error {
 	}()
 
 	return nil
+}
+
+func (a *App) Close() {
+	a.cancel(fmt.Errorf("app closed"))
 }
