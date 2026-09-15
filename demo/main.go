@@ -3,7 +3,6 @@ package main
 import (
 	_ "embed"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -20,7 +19,5 @@ func main() {
 			fmt.Fprintf(w, "pong %v", time.Now())
 		})
 
-	if err := app.Run(); err != nil {
-		log.Fatalln(err)
-	}
+	app.Launch()
 }

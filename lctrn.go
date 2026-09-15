@@ -9,6 +9,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -83,6 +85,14 @@ func getTopLevel(root fs.FS) fs.FS {
 	}
 
 	return newRoot
+}
+
+// Runs the app. Any errors will log, as well as showing a platform-specific popup
+func (a *App) Launch() {
+	if err := a.Run(); err != nil {
+		a.Popup("Error", err.Error())
+		log.Fatalln(err)
+	}
 }
 
 func (a *App) Run() error {
@@ -161,6 +171,33 @@ func (a *App) startChrome(port string) error {
 	}()
 
 	return nil
+}
+
+// Best-effort only
+func (app *App) Popup(title, msg string) {
+	switch runtime.GOOS {
+	case "darwin":
+		exec.Command("osascript", "-e",
+			fmt.Sprintf(`display dialog "%v" with title "%v" buttons {"OK"} with icon stop`, msg, title),
+		).Run()
+
+	case "windows":
+		exec.Command("powershell", "-Command",
+			fmt.Sprintf(`[System.Windows.Forms.MessageBox]::Show('%v','%v',0,16)`, msg, title),
+		).Run()
+
+	case "linux":
+		for _, tool := range [][]string{
+			{"zenity", "--error", "--title=" + title, "--text=" + msg},
+			{"kdialog", "--error", msg, "--title", title},
+			{"xmessage", "-center", msg},
+		} {
+			if path, err := exec.LookPath(tool[0]); err == nil {
+				exec.Command(path, tool[1:]...).Run()
+				return
+			}
+		}
+	}
 }
 
 func (a *App) Close() {
