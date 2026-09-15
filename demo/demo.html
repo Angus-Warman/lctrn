@@ -18,12 +18,18 @@
     <button onclick="ping()">Ping</button>
 
     <p id="output"></p>
+
+    <button onclick="popup()">Hello World</button>
 </body>
 
 <script>
   async function ping() {
     const res = await fetch("/api/ping")
     document.getElementById("output").innerText = await res.text()
+  }
+
+  async function popup() {
+    await fetch("/api/popup")
   }
 </script>
 
