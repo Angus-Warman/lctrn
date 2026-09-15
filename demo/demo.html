@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>lctrn demo</title>
+    <meta name="color-scheme" content="light dark">
+    <style>
+        body { font-family: system-ui, sans-serif; padding: 2rem; }
+        section { margin-bottom: 1.5rem; }
+        label { display: block; margin-bottom: 0.25rem; font-weight: bold; }
+        #output { white-space: pre-line; }
+    </style>
+</head>
+
+<body>
+    <h1>lctrn demo</h1>
+
+    <button onclick="ping()">Ping</button>
+
+    <p id="output"></p>
+</body>
+
+<script>
+  async function ping() {
+    const res = await fetch("/api/ping")
+    document.getElementById("output").innerText = await res.text()
+  }
+</script>
+
+</html>
