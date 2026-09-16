@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	_ "embed"
+	"encoding/base64"
 	"fmt"
 	"io/fs"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"time"
+	"unicode/utf16"
 
 	"github.com/chromedp/chromedp"
 )
@@ -195,9 +197,9 @@ var popupMethods = []popupMethod{
 	{
 		name: "powershell",
 		callback: func(title, msg string) error {
-			return exec.Command("powershell", "-Command",
-				fmt.Sprintf(`[System.Windows.Forms.MessageBox]::Show('%v','%v',0,16)`, msg, title),
-			).Run()
+			command := fmt.Sprintf("Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('%v','%v',0,16)", msg, title)
+			command = encodeUTF16LE(command)
+			return exec.Command("powershell", "-NoProfile", "-EncodedCommand", command).Run()
 		},
 	},
 	{
@@ -218,6 +220,15 @@ var popupMethods = []popupMethod{
 			return exec.Command("xmessage", "-center", msg).Run()
 		},
 	},
+}
+
+func encodeUTF16LE(s string) string {
+	u16 := utf16.Encode([]rune(s))
+	data := []byte{}
+	for _, r := range u16 {
+		data = append(data, byte(r), byte(r>>8))
+	}
+	return base64.StdEncoding.EncodeToString(data)
 }
 
 func popupUsingTxtFile(title, msg string) error {
