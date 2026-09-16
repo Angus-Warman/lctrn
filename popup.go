@@ -144,13 +144,15 @@ func (app *App) configurePopup() bool {
 func (app *App) Popup(title, msg string) {
 	if app.popupFunc == nil {
 		if !app.configurePopup() {
-			log.Println("no available popup method")
+			fmt.Fprintf(os.Stderr, "[%v] %v\n", title, msg)
+			return
 		}
 	}
 
 	err := app.popupFunc(title, msg)
 
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "[%v] %v\n", title, msg)
 		log.Println(fmt.Errorf("failed to show popup: %w", err))
 	}
 }

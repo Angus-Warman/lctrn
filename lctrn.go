@@ -15,6 +15,10 @@ import (
 )
 
 type App struct {
+	WindowWidth     int  // default 1200
+	WindowHeight    int  // default 800
+	StartFullscreen bool // default false
+
 	ctx       context.Context
 	cancel    context.CancelCauseFunc
 	Mux       *http.ServeMux
@@ -25,6 +29,9 @@ func New() *App {
 	ctx, cancel := context.WithCancelCause(context.Background())
 
 	return &App{
+		WindowWidth:  1200,
+		WindowHeight: 800,
+
 		ctx:    ctx,
 		cancel: cancel,
 		Mux:    http.NewServeMux(),
@@ -143,7 +150,11 @@ func (a *App) startChrome(port int) error {
 		chromedp.Flag("app", fmt.Sprintf("http://localhost:%v", port)),
 		chromedp.NoFirstRun,
 		chromedp.NoDefaultBrowserCheck,
-		chromedp.WindowSize(1200, 800),
+		chromedp.WindowSize(a.WindowWidth, a.WindowHeight),
+	}
+
+	if a.StartFullscreen {
+		opts = append(opts, chromedp.Flag("start-fullscreen", true))
 	}
 
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(a.ctx, opts...)
