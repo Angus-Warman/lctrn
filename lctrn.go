@@ -10,16 +10,16 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"runtime"
 	"time"
 
 	"github.com/chromedp/chromedp"
 )
 
 type App struct {
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-	Mux    *http.ServeMux
+	ctx       context.Context
+	cancel    context.CancelCauseFunc
+	Mux       *http.ServeMux
+	popupFunc func(title, msg string) error
 }
 
 func New() *App {
@@ -173,33 +173,95 @@ func (a *App) startChrome(port string) error {
 	return nil
 }
 
-// Best-effort only
-func (app *App) Popup(title, msg string) {
-	switch runtime.GOOS {
-	case "darwin":
-		exec.Command("osascript", "-e",
-			fmt.Sprintf(`display dialog "%v" with title "%v" buttons {"OK"} with icon stop`, msg, title),
-		).Run()
-
-	case "windows":
-		exec.Command("powershell", "-Command",
-			fmt.Sprintf(`[System.Windows.Forms.MessageBox]::Show('%v','%v',0,16)`, msg, title),
-		).Run()
-
-	case "linux":
-		for _, tool := range [][]string{
-			{"zenity", "--error", "--title=" + title, "--text=" + msg},
-			{"kdialog", "--error", msg, "--title", title},
-			{"xmessage", "-center", msg},
-		} {
-			if path, err := exec.LookPath(tool[0]); err == nil {
-				exec.Command(path, tool[1:]...).Run()
-				return
-			}
-		}
-	}
-}
-
 func (a *App) Close() {
 	a.cancel(fmt.Errorf("app closed"))
+}
+
+type popupMethod struct {
+	name     string
+	callback func(title, msg string) error
+}
+
+var popupMethods = []popupMethod{
+	{
+		name: "osascript",
+		callback: func(title, msg string) error {
+			return exec.Command("osascript", "-e",
+				fmt.Sprintf(`display dialog "%v" with title "%v" buttons {"OK"} with icon stop`, msg, title),
+			).Run()
+		},
+	},
+	{
+		name: "powershell",
+		callback: func(title, msg string) error {
+			return exec.Command("powershell", "-Command",
+				fmt.Sprintf(`[System.Windows.Forms.MessageBox]::Show('%v','%v',0,16)`, msg, title),
+			).Run()
+		},
+	},
+	{
+		name: "zenity",
+		callback: func(title, msg string) error {
+			return exec.Command("zenity", "--error", "--title="+title, "--text="+msg).Run()
+		},
+	},
+	{
+		name: "kdialog",
+		callback: func(title, msg string) error {
+			return exec.Command("kdialog", "--error", msg, "--title", title).Run()
+		},
+	},
+	{
+		name: "xmessage",
+		callback: func(title, msg string) error {
+			return exec.Command("xmessage", "-center", msg).Run()
+		},
+	},
+}
+
+func popupUsingTxtFile(title, msg string) error {
+	f, err := os.CreateTemp("", fmt.Sprintf("%v__*.txt", title))
+	if err != nil {
+		return err
+	}
+
+	if _, err := f.WriteString(msg); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	return exec.Command("open", f.Name()).Run()
+}
+
+func (app *App) configurePopup() {
+	if app.popupFunc != nil {
+		return
+	}
+
+	for _, method := range popupMethods {
+		_, err := exec.LookPath(method.name)
+		if err == nil {
+			app.popupFunc = method.callback
+			return
+		}
+	}
+
+	app.popupFunc = popupUsingTxtFile
+}
+
+func (app *App) Popup(title, msg string) {
+	if app.popupFunc == nil {
+		app.configurePopup()
+	}
+
+	err := app.popupFunc(title, msg)
+
+	if err != nil {
+		log.Println(fmt.Errorf("failed to show popup: %w", err))
+	}
 }
