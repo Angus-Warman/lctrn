@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -98,13 +99,14 @@ func (a *App) Launch() {
 func (a *App) Run() error {
 	errc := make(chan error, 1)
 
-	port := os.Getenv("LCTRN_PORT")
-	if port == "" {
-		port = "8778"
+	listener, err := net.Listen("tcp", ":0") // random port
+	if err != nil {
+		return err
 	}
+	port := listener.Addr().(*net.TCPAddr).Port
 
 	go func() {
-		errc <- a.startServer(port)
+		errc <- a.startServer(listener)
 	}()
 
 	if err := a.startChrome(port); err != nil {
@@ -116,11 +118,10 @@ func (a *App) Run() error {
 	return <-errc
 }
 
-func (a *App) startServer(port string) error {
+func (a *App) startServer(ln net.Listener) error {
 	log.Println("starting server...")
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%v", port),
 		Handler: a.Mux,
 	}
 
@@ -131,13 +132,13 @@ func (a *App) startServer(port string) error {
 		srv.Shutdown(shutdownCtx)
 	}()
 
-	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+	if err := srv.Serve(ln); err != http.ErrServerClosed {
 		return fmt.Errorf("server error: %w", err)
 	}
 	return nil
 }
 
-func (a *App) startChrome(port string) error {
+func (a *App) startChrome(port int) error {
 	log.Println("starting chrome...")
 
 	opts := []chromedp.ExecAllocatorOption{
