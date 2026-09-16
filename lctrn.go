@@ -11,13 +11,15 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/chromedp"
 )
 
 type App struct {
 	WindowWidth     int  // default 1200
 	WindowHeight    int  // default 800
-	StartFullscreen bool // default false
+	StartMaximised  bool // default off
+	StartFullscreen bool // default off
 
 	ctx       context.Context
 	cancel    context.CancelCauseFunc
@@ -153,17 +155,34 @@ func (a *App) startChrome(port int) error {
 		chromedp.WindowSize(a.WindowWidth, a.WindowHeight),
 	}
 
-	if a.StartFullscreen {
-		opts = append(opts, chromedp.Flag("start-fullscreen", true))
-	}
-
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(a.ctx, opts...)
 	browserCtx, cancelBrowser := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
 
-	err := chromedp.Run(browserCtx,
+	actions := []chromedp.Action{
 		chromedp.Navigate(fmt.Sprintf("http://localhost:%v", port)),
 		chromedp.WaitReady("body"),
-	)
+	}
+
+	windowState := browser.WindowStateNormal
+
+	if a.StartMaximised {
+		windowState = browser.WindowStateMaximized
+	}
+	if a.StartFullscreen {
+		windowState = browser.WindowStateFullscreen
+	}
+
+	if windowState != browser.WindowStateNormal {
+		actions = append(actions, chromedp.ActionFunc(func(ctx context.Context) error {
+			windowID, _, err := browser.GetWindowForTarget().Do(ctx)
+			if err != nil {
+				return err
+			}
+			return browser.SetWindowBounds(windowID, &browser.Bounds{WindowState: windowState}).Do(ctx)
+		}))
+	}
+
+	err := chromedp.Run(browserCtx, actions...)
 
 	if err != nil {
 		cancelBrowser()

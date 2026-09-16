@@ -24,5 +24,8 @@ func main() {
 		go app.Popup("Hello World", "Test Popup")
 	})
 
+	// app.StartMaximised = true
+	// app.StartFullscreen = true
+
 	app.Launch()
 }
