@@ -9,6 +9,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"runtime"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -107,7 +109,7 @@ func (a *App) Run() error {
 		errc <- a.startServer(listener)
 	}()
 
-	if err := a.startChrome(port); err != nil {
+	if err := a.startBrowser(port); err != nil {
 		a.Close()
 		<-errc
 		return err
@@ -136,14 +138,20 @@ func (a *App) startServer(ln net.Listener) error {
 	return nil
 }
 
-func (a *App) startChrome(port int) error {
-	log.Println("starting chrome...")
+func (a *App) startBrowser(port int) error {
+	log.Println("starting browser...")
 
 	opts := []chromedp.ExecAllocatorOption{
 		chromedp.Flag("app", fmt.Sprintf("http://localhost:%v", port)),
 		chromedp.NoFirstRun,
 		chromedp.NoDefaultBrowserCheck,
 		chromedp.WindowSize(1200, 800),
+	}
+
+	if path, found := findBrowser(); found {
+		opts = append(opts, chromedp.ExecPath(path))
+	} else {
+		// chromedp does it's best to find a browser anyway
 	}
 
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(a.ctx, opts...)
@@ -157,10 +165,8 @@ func (a *App) startChrome(port int) error {
 	if err != nil {
 		cancelBrowser()
 		cancelAlloc()
-		return fmt.Errorf("chrome launch failed: %w", err)
+		return fmt.Errorf("browser launch failed: %w", err)
 	}
-
-	log.Println("chrome opened")
 
 	go func() {
 		<-browserCtx.Done()
@@ -170,6 +176,42 @@ func (a *App) startChrome(port int) error {
 	}()
 
 	return nil
+}
+
+func findBrowser() (string, bool) {
+	var candidates []string
+
+	switch runtime.GOOS {
+	case "windows":
+		candidates = []string{
+			`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
+			`C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
+			`C:\Program Files\Google\Chrome\Application\chrome.exe`,
+			`C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`,
+		}
+	case "darwin":
+		candidates = []string{
+			`/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge`,
+			`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`,
+		}
+	case "linux":
+		candidates = []string{
+			`/usr/bin/microsoft-edge`,
+			`/usr/bin/microsoft-edge-stable`,
+			`/usr/bin/google-chrome`,
+			`/usr/bin/google-chrome-stable`,
+			`/usr/bin/chromium-browser`,
+			`/usr/bin/chromium`,
+		}
+	}
+
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path, true
+		}
+	}
+
+	return "", false
 }
 
 func (a *App) Close() {
